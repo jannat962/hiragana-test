@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hiragana-Test-App</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            /* Dark Blue */
+            --secondary: #0ea5e9;
+            /* Sky Blue */
+            --title-blue: #111827;
+            /* Near Black Blue for contrast */
+            --accent: #f59e0b;
+            --glass: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.4);
+        }
+
+        body {
+            font-family: 'Outfit', 'Noto Sans JP', sans-serif;
+            background: linear-gradient(135deg, #fdf2f8 0%, #eef2ff 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .glass {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        .card-hover {
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .card-hover:hover {
+            transform: translateY(-10px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .japanese-text {
+            font-family: 'Noto Sans JP', sans-serif;
+            font-weight: 700;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+
+            100% {
+                transform: translateY(0px);
+            }
+        }
+
+        .floating {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .btn-gradient {
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transition: opacity 0.3s;
+        }
+
+        .btn-gradient:hover {
+            opacity: 0.9;
+        }
+
+        .option-btn {
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .option-btn:hover:not(:disabled) {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .correct {
+            background: #dcfce7 !important;
+            border-color: #22c55e !important;
+            color: #15803d !important;
+        }
+
+        .incorrect {
+            background: #fee2e2 !important;
+            border-color: #ef4444 !important;
+            color: #b91c1c !important;
+        }
+
+        .progress-container {
+            height: 6px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #ec4899);
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        /**
+         * WELCOME TO THE HIRAGANA-TEST LOGIC
+         * This script powers the entire "Mastery Engine". 
+         * We use React because it allows the UI to update instantly as the user types or clicks.
+         */
+        const { useState, useEffect, useRef } = React;
+
+        // --- STEP 1: THE DATA BANK ---
+        // This is the core dictionary of the app. Every character has its symbol (h) and its sound (r).
+        // This array is the source of truth for all quizzes.
+        const HIRAGANA_DATA = [
+            { h: 'あ', r: 'a' }, { h: 'い', r: 'i' }, { h: 'う', r: 'u' }, { h: 'え', r: 'e' }, { h: 'お', r: 'o' },
+            { h: 'か', r: 'ka' }, { h: 'き', r: 'ki' }, { h: 'く', r: 'ku' }, { h: 'け', r: 'ke' }, { h: 'こ', r: 'ko' },
+            { h: 'さ', r: 'sa' }, { h: 'し', r: 'shi' }, { h: 'す', r: 'su' }, { h: 'せ', r: 'se' }, { h: 'そ', r: 'so' },
+            { h: 'た', r: 'ta' }, { h: 'ち', r: 'chi' }, { h: 'つ', r: 'tsu' }, { h: 'て', r: 'te' }, { h: 'と', r: 'to' },
+            { h: 'な', r: 'na' }, { h: 'に', r: 'ni' }, { h: 'ぬ', r: 'nu' }, { h: 'ね', r: 'ne' }, { h: 'の', r: 'no' },
+            { h: 'は', r: 'ha' }, { h: 'ひ', r: 'hi' }, { h: 'ふ', r: 'fu' }, { h: 'へ', r: 'he' }, { h: 'ほ', r: 'ho' },
+            { h: 'ま', r: 'ma' }, { h: 'み', r: 'mi' }, { h: 'む', r: 'mu' }, { h: 'め', r: 'me' }, { h: 'も', r: 'mo' },
+            { h: 'や', r: 'ya' }, { h: 'ゆ', r: 'yu' }, { h: 'よ', r: 'yo' },
+            { h: 'ら', r: 'ra' }, { h: 'り', r: 'ri' }, { h: 'る', r: 'ru' }, { h: 'れ', r: 're' }, { h: 'ろ', r: 'ro' },
+            { h: 'わ', r: 'wa' }, { h: 'を', r: 'wo' }, { h: 'ん', r: 'n' }
+        ];
+
+        const App = () => {
+            // --- STEP 2: THE APP'S "MEMORY" (STATE) ---
+            // 'view' controls which screen the user sees (auth, dashboard, quiz, or result).
+            const [view, setView] = useState('auth'); 
+            const [quizMode, setQuizMode] = useState('visual'); // Switch between seeing symbols or hearing sounds.
+            const [user, setUser] = useState(null); // Stores the logged-in user's profile.
+            const [isSignup, setIsSignup] = useState(false); // Toggle between Login and Signup forms.
+
+            // Auth Input States: Temporary storage for what the user types in the login forms.
+            const [username, setUsername] = useState('');
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+
+            // --- STEP 3: PERSISTENCE (ALWAYS REMEMBER) ---
+            // This hook runs once when the app starts. It checks the browser's "filing cabinet" 
+            // (localStorage) to see if someone is already logged in.
+            useEffect(() => {
+                const savedUser = localStorage.getItem('current_user');
+                if (savedUser) {
+                    setUser(JSON.parse(savedUser));
+                    setView('dashboard');
+                }
+            }, []);
+
+            // Quiz Performance States: Tracking the current session's progress.
+            const [quizList, setQuizList] = useState([]); // The 10 characters for the current round.
+            const [currentIndex, setCurrentIndex] = useState(0); // Which question are we on?
+            const [options, setOptions] = useState([]); // Multiple choice options for Audio mode.
+            const [userInput, setUserInput] = useState(''); // What the user typed in the quiz box.
+            const [feedback, setFeedback] = useState(null); // Stores 'correct' or 'incorrect' to show colors.
+            const [score, setScore] = useState(0); // Total correct answers.
+            const [timeLeft, setTimeLeft] = useState(30); // The countdown timer.
+            const [streak, setStreak] = useState(0); // Consecutive correct answers for the 🔥 effect.
+            const [maxStreak, setMaxStreak] = useState(0); // Highest streak achieved this session.
+            const timerRef = useRef(null);
+
+            // --- STEP 4: SPEECH ENGINE ---
+            // Uses the browser's native speech synthesis. We 'cancel' previous speech to prevent overlapping.
+            const playAudio = (text) => {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ja-JP'; // Specifically set to Japanese.
+                utterance.rate = 0.8; // Slightly slower for better learning.
+                window.speechSynthesis.speak(utterance);
+            };
+
+            // --- STEP 5: SMART OPTION GENERATION ---
+            // In Audio mode, we need 1 correct answer and 3 random "distractors".
+            // This makes the quiz challenging but fair.
+            const generateOptions = (correctChar) => {
+                const distractors = HIRAGANA_DATA
+                    .filter(item => item.h !== correctChar)
+                    .sort(() => 0.5 - Math.random())
+                    .slice(0, 3)
+                    .map(item => item.h);
+                return [correctChar, ...distractors].sort(() => 0.5 - Math.random());
+            };
+
+            // --- STEP 6: AUTHENTICATION (THE GATEKEEPER) ---
+            // Handles both Signup and Login. Validates ID length, email format, and password security.
+            const handleAuth = (e) => {
+                e.preventDefault();
+                setError('');
+
+                // Human-friendly validation messages.
+                if (!/^\d{4}$/.test(username)) {
+                    setError('Username must be a 4-digit number.');
+                    return;
+                }
+                if (isSignup && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    setError('Please enter a valid email address.');
+                    return;
+                }
+                if (password.length < 6) {
+                    setError('Password must be at least 6 characters.');
+                    return;
+                }
+
+                if (isSignup) {
+                    // Check if ID is taken, then save to localStorage.
+                    if (localStorage.getItem(`u_${username}`)) {
+                        setError('This ID is already registered.');
+                        return;
+                    }
+                    const newUser = { username, email, password };
+                    localStorage.setItem(`u_${username}`, JSON.stringify(newUser));
+                    localStorage.setItem('current_user', JSON.stringify(newUser));
+                    setUser(newUser);
+                    setView('dashboard');
+                } else {
+                    // Verify existing credentials from localStorage.
+                    const stored = JSON.parse(localStorage.getItem(`u_${username}`));
+                    if (stored && stored.password === password) {
+                        localStorage.setItem('current_user', JSON.stringify(stored));
+                        setUser(stored);
+                        setView('dashboard');
+                    } else {
+                        setError('Invalid ID or password.');
+                    }
+                }
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('current_user');
+                setUser(null);
+                setView('auth');
+            };
+
+            // --- STEP 7: CULTURAL GREETINGS ---
+            // Checks the time of day to greet the user in Japanese.
+            const getGreeting = () => {
+                const hour = new Date().getHours();
+                if (hour < 12) return "Ohayou (おはよう)";
+                if (hour < 18) return "Konnichiwa (こんにちは)";
+                return "Konbanwa (こんばんは)";
+            };
+
+            // --- STEP 8: MNEMONIC HINTS (LEARNING TRICKS) ---
+            // Visual association tricks to help users memorize characters.
+            const MNEMONICS = {
+                'あ': 'Looks like an Apple.',
+                'い': 'Two eels swimming.',
+                'う': 'Looks like a U-turn or an ear.',
+                'え': 'An exotic bird or an exercise.',
+                'お': 'A golfer at the tee (on the green).',
+                'か': 'A camera on a tripod.',
+                'き': 'A key with two bars.',
+                'く': 'A cuckoo bird\'s beak.',
+                'け': 'A keg of beer.',
+                'こ': 'Two coins on a table.',
+                'し': 'A fish hook (She likes fishing).',
+                'す': 'A swing with a loop.',
+                'せ': 'A sunset at the beach.',
+                'そ': 'A sewing stitch.',
+                'た': 'Looks like the letters TA.',
+                'ち': 'A cheerleader doing a jump.',
+                'つ': 'A tsunami wave.',
+                'て': 'A dog\'s tail.',
+                'と': 'A toe with a splinter.',
+                'な': 'A nun praying.',
+                'に': 'Two needles.',
+                'ぬ': 'Noodles with a loop.',
+                'ね': 'A cat (neko) with a tail.',
+                'の': 'A "No" sign.',
+                'は': 'A ha-ha-house.',
+                'ひ': 'A person saying "He-he!".',
+                'ふ': 'Mount Fuji.',
+                'へ': 'A mountain path (heavens).',
+                'ほ': 'A hot house with a chimney.',
+                'ま': 'A mama calling her child.',
+                'み': 'Who is 21? (Me!).',
+                'む': 'A cow (moo) with a tail.',
+                'め': 'An eye (me) with eyelashes.',
+                'も': 'A hook for mo-more fish.',
+                'や': 'A yak in the grass.',
+                'ゆ': 'A unique fish.',
+                'よ': 'A yo-yo on a string.',
+                'ら': 'A rabbit\'s ear.',
+                'り': 'Ribbons in the wind.',
+                'る': 'A road with a loop.',
+                'れ': 'An old man resting.',
+                'ろ': 'A road with no loop.',
+                'わ': 'A wasp flying.',
+                'を': 'Whoa! Someone on a unicycle.',
+                'ん': 'The end of the alphabet.'
+            };
+
+
+            // --- STEP 9: THE QUIZ ENGINE (CREATING THE CHALLENGE) ---
+            const startQuiz = (mode) => {
+                let shuffled;
+                if (mode === 'targeted') {
+                    /**
+                     * SMART FEATURE: Targeted Training
+                     * We look at which characters you've failed most in the past 
+                     * and prioritize them for this round.
+                     */
+                    const stats = JSON.parse(localStorage.getItem(`stats_${user?.username}`) || '{}');
+                    const sorted = Object.entries(stats)
+                        .filter(([_, s]) => s.fail > 0)
+                        .sort((a, b) => b[1].fail - a[1].fail)
+                        .map(([char, _]) => char);
+                    
+                    const weakCharacters = sorted.map(h => HIRAGANA_DATA.find(d => d.h === h)).filter(Boolean);
+                    const pool = [...weakCharacters, ...HIRAGANA_DATA.sort(() => 0.5 - Math.random())];
+                    shuffled = pool.slice(0, 10);
+                } else {
+                    // Pure random shuffle for standard modes.
+                    shuffled = [...HIRAGANA_DATA].sort(() => 0.5 - Math.random()).slice(0, 10);
+                }
+
+                // Resetting all game-related state for a fresh start.
+                setQuizList(shuffled);
+                setQuizMode(mode === 'targeted' ? 'visual' : mode);
+                setCurrentIndex(0);
+                setScore(0);
+                setStreak(0);
+                setFeedback(null);
+                setUserInput('');
+                setView('quiz');
+                setTimeLeft(30);
+                
+                if (mode === 'audio') {
+                    const opts = generateOptions(shuffled[0].h);
+                    setOptions(opts);
+                    setTimeout(() => playAudio(shuffled[0].h), 500);
+                }
+            };
+
+            // --- STEP 10: TIMER LOGIC ---
+            useEffect(() => {
+                if (view === 'quiz' && !feedback && timeLeft > 0) {
+                    timerRef.current = setInterval(() => setTimeLeft(t => t - 1), 1000);
+                } else if (timeLeft === 0 && !feedback) {
+                    handleAnswer(null); // Timeout results in an automatic "incorrect" answer.
+                }
+                return () => clearInterval(timerRef.current);
+            }, [view, feedback, timeLeft]);
+
+            // --- STEP 11: CELEBRATION (CONFETTI) ---
+            // Triggers a confetti burst when the user finishes the quiz.
+            useEffect(() => {
+                if (view === 'result') {
+                    confetti({
+                        particleCount: 150,
+                        spread: 70,
+                        origin: { y: 0.6 },
+                        colors: ['#1e3a8a', '#0ea5e9', '#f59e0b']
+                    });
+                }
+            }, [view]);
+
+            // --- STEP 12: ANALYTICS (LEARNING FROM FAILURE) ---
+            // Records every answer into localStorage so the "Targeted" mode knows your weak spots.
+            const updatePerformance = (char, isCorrect) => {
+                const stats = JSON.parse(localStorage.getItem(`stats_${user?.username}`) || '{}');
+                if (!stats[char]) stats[char] = { correct: 0, fail: 0 };
+                if (isCorrect) stats[char].correct += 1;
+                else stats[char].fail += 1;
+                localStorage.setItem(`stats_${user?.username}`, JSON.stringify(stats));
+            };
+
+            // --- STEP 13: ANSWER HANDLING ---
+            const handleAnswer = (answer) => {
+                if (feedback) return;
+                
+                const correct = quizList[currentIndex].h;
+                const isCorrect = quizMode === 'visual' 
+                    ? (answer && answer.toLowerCase().trim() === quizList[currentIndex].r)
+                    : answer === correct;
+
+                updatePerformance(correct, isCorrect);
+
+                if (isCorrect) {
+                    setScore(s => s + 1);
+                    setStreak(s => {
+                        const newStreak = s + 1;
+                        if (newStreak > maxStreak) setMaxStreak(newStreak);
+                        return newStreak;
+                    });
+                    setFeedback('correct');
+                } else {
+                    setStreak(0);
+                    setFeedback('incorrect');
+                }
+            };
+
+            // --- STEP 14: NAVIGATION (MOVING FORWARD) ---
+            const handleNext = () => {
+                window.speechSynthesis.cancel();
+                if (currentIndex < 9) {
+                    const nextIndex = currentIndex + 1;
+                    setCurrentIndex(nextIndex);
+                    setFeedback(null);
+                    setUserInput('');
+                    
+                    // SMART FEATURE: Dynamic Difficulty
+                    // The timer gets faster as your streak grows!
+                    const baseTime = 30;
+                    const deduction = Math.min(streak * 2, 20); 
+                    setTimeLeft(baseTime - deduction);
+
+                    if (quizMode === 'audio') {
+                        const opts = generateOptions(quizList[nextIndex].h);
+                        setOptions(opts);
+                        playAudio(quizList[nextIndex].h);
+                    }
+                } else {
+                    setView('result');
+                }
+            };
+
+            // --- STEP 15: THE VIEWS (UI RENDERING) ---
+            // React returns different HTML based on the 'view' state.
+
+            if (view === 'auth') return (
+                <div className="min-h-screen flex items-center justify-center p-6">
+                    <div className="glass w-full max-w-md p-10 rounded-[2.5rem] text-center">
+                        <div className="mb-8">
+                            <div className="w-20 h-20 bg-[var(--primary)] rounded-3xl mx-auto flex items-center justify-center text-white text-4xl font-black shadow-lg mb-4 floating">あ</div>
+                            <h1 className="text-4xl font-extrabold text-[var(--title-blue)] tracking-tight">Hiragana-<span className="text-[var(--primary)]">Test</span></h1>
+                            <p className="text-gray-500 mt-2">{isSignup ? 'Create your account' : 'Welcome back'}</p>
+                        </div>
+                        <form onSubmit={handleAuth} className="space-y-4">
+                            <div className="space-y-1 text-left">
+                                <label className="text-xs font-bold text-gray-400 uppercase ml-4">User ID (4 Digits)</label>
+                                <input type="text" placeholder="0000" maxLength="4"
+                                    className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none text-center text-xl font-bold transition-all"
+                                    value={username} onChange={e => setUsername(e.target.value.replace(/\D/g, ''))} required />
+                            </div>
+
+                            {isSignup && (
+                                <div className="space-y-1 text-left">
+                                    <label className="text-xs font-bold text-gray-400 uppercase ml-4">Email Address</label>
+                                    <input type="email" placeholder="you@example.com"
+                                        className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none transition-all"
+                                        value={email} onChange={e => setEmail(e.target.value)} required />
+                                </div>
+                            )}
+
+                            <div className="space-y-1 text-left">
+                                <label className="text-xs font-bold text-gray-400 uppercase ml-4">Password</label>
+                                <input type="password" placeholder="••••••••"
+                                    className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none transition-all"
+                                    value={password} onChange={e => setPassword(e.target.value)} required />
+                            </div>
+
+                            {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
+
+                            <button className="w-full btn-gradient text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-blue-100 transform active:scale-95 transition">
+                                {isSignup ? 'Create Account' : 'Sign In'}
+                            </button>
+                        </form>
+
+                        <button onClick={() => { setIsSignup(!isSignup); setError(''); }} className="mt-6 text-[var(--primary)] font-bold hover:underline">
+                            {isSignup ? 'Already have an account? Login' : 'Need an account? Sign up'}
+                        </button>
+                    </div>
+                </div>
+            );
+
+            if (view === 'dashboard') return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-8">
+                    <div className="max-w-4xl w-full">
+                        <div className="flex justify-between items-center mb-12">
+                            <div className="text-left">
+                                <h2 className="text-4xl font-black text-[var(--title-blue)]">{getGreeting()}, <span className="text-[var(--primary)]">ID {user?.username}</span></h2>
+                                <p className="text-gray-500">Ready to master Hiragana today?</p>
+                            </div>
+                            <button onClick={handleLogout} className="glass px-6 py-3 rounded-2xl font-bold text-red-500 hover:bg-red-50 transition-colors">
+                                Logout
+                            </button>
+                        </div>
+
+                        <div className="grid lg:grid-cols-3 gap-8">
+                            <div onClick={() => startQuiz('visual')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 opacity-5 rounded-bl-full transform transition-transform group-hover:scale-150"></div>
+                                <div className="text-6xl mb-6">👁️</div>
+                                <h3 className="text-2xl font-bold text-gray-800 mb-2">Visual</h3>
+                                <p className="text-gray-500 mb-8 leading-relaxed text-sm">Identify characters and type romaji.</p>
+                                <div className="flex items-center text-indigo-600 font-bold">Start →</div>
+                            </div>
+
+                            <div onClick={() => startQuiz('audio')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group border-indigo-200 bg-white/80">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500 opacity-5 rounded-bl-full transform transition-transform group-hover:scale-150"></div>
+                                <div className="text-6xl mb-6">🎧</div>
+                                <h3 className="text-2xl font-bold text-gray-800 mb-2">Listening</h3>
+                                <p className="text-gray-500 mb-8 leading-relaxed text-sm">Listen and select the correct character.</p>
+                                <div className="flex items-center text-pink-600 font-bold">Start →</div>
+                            </div>
+
+                            <div onClick={() => startQuiz('targeted')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group border-amber-200 bg-amber-50/30">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500 opacity-5 rounded-bl-full transform transition-transform group-hover:scale-150"></div>
+                                <div className="text-6xl mb-6">🎯</div>
+                                <h3 className="text-2xl font-bold text-gray-800 mb-2">Targeted</h3>
+                                <p className="text-gray-500 mb-8 leading-relaxed text-sm">AI-powered focus on your weak spots.</p>
+                                <div className="flex items-center text-amber-600 font-bold">Fix Errors →</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            if (view === 'quiz') return (
+                <div className="min-h-screen flex flex-col items-center justify-center p-6">
+                    <div className="w-full max-w-2xl">
+                        <div className="flex justify-between items-center mb-4 px-4">
+                            <button onClick={() => setView('dashboard')} className="text-gray-400 hover:text-gray-600 font-bold flex items-center">
+                                <span className="mr-2">←</span> Quit
+                            </button>
+                            <div className="flex gap-3">
+                                {streak > 2 && (
+                                    <div className="glass px-4 py-2 rounded-full font-black text-orange-500 animate-bounce flex items-center shadow-orange-100 shadow-lg">
+                                        🔥 {streak} STREAK
+                                    </div>
+                                )}
+                                <div className="glass px-4 py-2 rounded-full font-bold text-gray-600">{currentIndex + 1} / 10</div>
+                                <div className={`glass px-4 py-2 rounded-full font-bold ${timeLeft < 10 ? 'text-red-500' : 'text-indigo-600'}`}>
+                                    {timeLeft}s
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-4 mb-8">
+                            <div className="progress-container">
+                                <div className="progress-fill" style={{ width: `${(currentIndex + 1) * 10}%` }}></div>
+                            </div>
+                        </div>
+
+                        <div className="glass rounded-[3.5rem] p-12 relative overflow-hidden">
+                            {/* Quiz Content */}
+                            {quizMode === 'visual' ? (
+                                <div className="text-center">
+                                    <div className="japanese-text text-[140px] leading-none mb-4 text-gray-800 drop-shadow-sm transition-transform hover:scale-110 cursor-default">
+                                        {quizList[currentIndex].h}
+                                    </div>
+
+                                    {/* Mnemonic Hint */}
+                                    <div className="h-8 mb-8">
+                                        {(feedback === 'incorrect' || streak === 0) && (
+                                            <p className="text-indigo-400 italic text-sm animate-fade-in">
+                                                Tip: {MNEMONICS[quizList[currentIndex].h]}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="max-w-xs mx-auto">
+                                        <input
+                                            type="text"
+                                            className={`w-full p-6 text-3xl text-center rounded-3xl outline-none transition-all ring-2 ring-gray-100 focus:ring-indigo-500 ${feedback === 'correct' ? 'ring-green-500 bg-green-50' : feedback === 'incorrect' ? 'ring-red-500 bg-red-50' : ''}`}
+                                            placeholder="type romaji..."
+                                            value={userInput}
+                                            onChange={e => setUserInput(e.target.value)}
+                                            disabled={!!feedback}
+                                            autoFocus
+                                            onKeyDown={e => e.key === 'Enter' && (feedback ? handleNext() : handleAnswer(userInput))}
+                                        />
+
+                                        <div className="flex gap-4 mt-8">
+                                            {!feedback ? (
+                                                <button onClick={() => handleAnswer(userInput)} className="flex-1 py-4 btn-gradient text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:scale-105 transition transform active:scale-95">Check</button>
+                                            ) : (
+                                                <button onClick={handleNext} className="flex-1 py-4 bg-gray-800 text-white rounded-2xl font-bold shadow-lg hover:bg-black transition animate-pulse transform active:scale-95">Next →</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center">
+                                    <button
+                                        onClick={() => playAudio(quizList[currentIndex].h)}
+                                        className="w-32 h-32 bg-white rounded-full shadow-lg border border-gray-100 mb-12 flex items-center justify-center text-5xl hover:scale-110 active:scale-95 transition-all mx-auto relative group"
+                                    >
+                                        <div className="absolute inset-0 bg-indigo-500 opacity-0 group-hover:opacity-10 rounded-full transition-opacity"></div>
+                                        🔊
+                                    </button>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {options.map((opt, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => handleAnswer(opt)}
+                                                disabled={!!feedback}
+                                                className={`option-btn p-8 rounded-3xl text-5xl japanese-text glass font-bold ${feedback === 'correct' && opt === quizList[currentIndex].h ? 'correct' : feedback === 'incorrect' && opt === quizList[currentIndex].h ? 'correct' : feedback === 'incorrect' && opt !== quizList[currentIndex].h ? 'incorrect' : ''}`}
+                                            >
+                                                {opt}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {feedback === 'incorrect' && quizMode === 'audio' && (
+                                        <div className="mt-4 text-pink-600 font-bold animate-bounce">
+                                            Correct: {quizList[currentIndex].h} ({quizList[currentIndex].r})
+                                        </div>
+                                    )}
+
+                                    {feedback && (
+                                        <div className="mt-10 max-w-xs mx-auto">
+                                            <button onClick={handleNext} className="w-full py-5 bg-gray-800 text-white rounded-2xl font-bold shadow-lg hover:bg-black transition animate-pulse transform active:scale-95">
+                                                Next Character →
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Correct Answer Display on Fail */}
+                            {feedback === 'incorrect' && quizMode === 'visual' && (
+                                <div className="mt-8 text-center text-red-500 font-bold animate-bounce">
+                                    Correct: {quizList[currentIndex].r}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+
+            if (view === 'result') return (
+                <div className="min-h-screen flex items-center justify-center p-6 text-center">
+                    <div className="glass w-full max-w-md p-16 rounded-[4rem] relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)]"></div>
+                        <div className="text-7xl mb-6 floating">🏆</div>
+                        <h2 className="text-4xl font-black text-[var(--title-blue)] mb-2">Training Done!</h2>
+                        <p className="text-gray-500 mb-2 italic">Otsukaresama desu!</p>
+
+                        <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-indigo-600 to-purple-600 mb-4">
+                            {score}<span className="text-3xl text-gray-300">/10</span>
+                        </div>
+
+                        {maxStreak > 2 && (
+                            <div className="mb-10 text-orange-500 font-bold text-lg">
+                                Best Streak: 🔥 {maxStreak}
+                            </div>
+                        )}
+
+                        <button onClick={() => setView('dashboard')} className="w-full py-5 btn-gradient text-white rounded-2xl font-bold text-xl shadow-xl shadow-blue-100 hover:scale-[1.02] active:scale-95 transition">
+                            Main Menu
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
