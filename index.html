@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@400;700&display=swap"
         rel="stylesheet">
@@ -134,6 +135,83 @@
         .animate-fade-in {
             animation: fadeIn 0.4s ease-out forwards;
         }
+
+        /* 3D Card Flip */
+        .card-container {
+            perspective: 1000px;
+            width: 320px;
+            height: 420px;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+            cursor: pointer;
+        }
+
+        .card-container.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 2.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .card-front {
+            background: white;
+            border: 2px solid var(--secondary);
+        }
+
+        .card-back {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            transform: rotateY(180deg);
+        }
+
+        .hint-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+        }
+
+        .hint-item {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 1.25rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+            transition: all 0.3s;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .hint-item:hover {
+            transform: scale(1.1);
+            border-color: var(--secondary);
+            background: white;
+            box-shadow: 0 10px 20px rgba(14, 165, 233, 0.2);
+        }
+
+        .hint-item.vowel { background: #eff6ff; color: var(--primary); }
+        .hint-item.consonant { background: white; color: #64748b; border: 1px solid #f1f5f9; }
+        .hint-item.active { background: var(--primary); color: white; border-color: var(--primary); }
     </style>
 </head>
 
@@ -141,16 +219,8 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        /**
-         * WELCOME TO THE HIRAGANA-TEST LOGIC
-         * This script powers the entire "Mastery Engine". 
-         * We use React because it allows the UI to update instantly as the user types or clicks.
-         */
         const { useState, useEffect, useRef } = React;
 
-        // --- STEP 1: THE DATA BANK ---
-        // This is the core dictionary of the app. Every character has its symbol (h) and its sound (r).
-        // This array is the source of truth for all quizzes.
         const HIRAGANA_DATA = [
             { h: 'あ', r: 'a' }, { h: 'い', r: 'i' }, { h: 'う', r: 'u' }, { h: 'え', r: 'e' }, { h: 'お', r: 'o' },
             { h: 'か', r: 'ka' }, { h: 'き', r: 'ki' }, { h: 'く', r: 'ku' }, { h: 'け', r: 'ke' }, { h: 'こ', r: 'ko' },
@@ -164,525 +234,455 @@
             { h: 'わ', r: 'wa' }, { h: 'を', r: 'wo' }, { h: 'ん', r: 'n' }
         ];
 
-        const App = () => {
-            // --- STEP 2: THE APP'S "MEMORY" (STATE) ---
-            // 'view' controls which screen the user sees (auth, dashboard, quiz, or result).
-            const [view, setView] = useState('auth'); 
-            const [quizMode, setQuizMode] = useState('visual'); // Switch between seeing symbols or hearing sounds.
-            const [user, setUser] = useState(null); // Stores the logged-in user's profile.
-            const [isSignup, setIsSignup] = useState(false); // Toggle between Login and Signup forms.
+        const HINTS_DATA = {
+            'あ': { mnemonic: 'Looks like an Antenna on a roof.', word: 'あか', romaji_word: 'aka', meaning: 'RED' },
+            'い': { mnemonic: 'Two Individuals standing side by side.', word: 'いち', romaji_word: 'ichi', meaning: 'ONE' },
+            'う': { mnemonic: 'Looks like a U-turn sign.', word: 'うみ', romaji_word: 'umi', meaning: 'SEA' },
+            'え': { mnemonic: 'An Energetic bird flying away.', word: 'え', romaji_word: 'e', meaning: 'PICTURE' },
+            'お': { mnemonic: 'A golfer at the tee (On the green).', word: 'おか', romaji_word: 'oka', meaning: 'HILL' },
+            'か': { mnemonic: 'A Kite flying in the sky.', word: 'かさ', romaji_word: 'kasa', meaning: 'UMBRELLA' },
+            'き': { mnemonic: 'A Key used to open a door.', word: 'きく', romaji_word: 'kiku', meaning: 'CHRYSANTHEMUM' },
+            'く': { mnemonic: 'The beak of a Cuckoo bird.', word: 'くつ', romaji_word: 'kutsu', meaning: 'SHOES' },
+            'け': { mnemonic: 'A Keg of sake.', word: 'け', romaji_word: 'ke', meaning: 'HAIR' },
+            'こ': { mnemonic: 'Two Co-dependent worms.', word: 'こめ', romaji_word: 'kome', meaning: 'RICE' },
+            'さ': { mnemonic: 'A Samurai sword slashing.', word: 'さる', romaji_word: 'saru', meaning: 'MONKEY' },
+            'し': { mnemonic: 'She has long hair (hook shape).', word: 'しお', romaji_word: 'shio', meaning: 'SALT' },
+            'す': { mnemonic: 'A Swing with a loop.', word: 'すいか', romaji_word: 'suika', meaning: 'WATERMELON' },
+            'せ': { mnemonic: 'A Sunset over the water.', word: 'せかい', romaji_word: 'sekai', meaning: 'WORLD' },
+            'そ': { mnemonic: 'A Sowing needle sewing.', word: 'そら', romaji_word: 'sora', meaning: 'SKY' },
+            'た': { mnemonic: 'T-A spelled out.', word: 'たまご', romaji_word: 'tamago', meaning: 'EGG' },
+            'ち': { mnemonic: 'A Cheerleader doing a split.', word: 'ちいさい', romaji_word: 'chiisai', meaning: 'SMALL' },
+            'つ': { mnemonic: 'A Tsunami wave.', word: 'つくえ', romaji_word: 'tsukue', meaning: 'DESK' },
+            'て': { mnemonic: 'A dog\'s Tail.', word: 'て', romaji_word: 'te', meaning: 'HAND' },
+            'と': { mnemonic: 'A Toe with a splinter.', word: 'とり', romaji_word: 'tori', meaning: 'BIRD' },
+            'な': { mnemonic: 'A Nun kneeling at a cross.', word: 'なまえ', romaji_word: 'namae', meaning: 'NAME' },
+            'に': { mnemonic: 'Knee-caps or needles.', word: 'にじ', romaji_word: 'niji', meaning: 'RAINBOW' },
+            'ぬ': { mnemonic: 'Noodles with a loop.', word: 'ぬの', romaji_word: 'nuno', meaning: 'CLOTH' },
+            'ね': { mnemonic: 'A cat\'s tail (Neko).', word: 'ねこ', romaji_word: 'neko', meaning: 'CAT' },
+            'の': { mnemonic: 'A No-smoking sign.', word: 'のり', romaji_word: 'nori', meaning: 'SEAWEED' },
+            'は': { mnemonic: 'Ha! A Ha-ha-house.', word: 'はな', romaji_word: 'hana', meaning: 'FLOWER' },
+            'ひ': { mnemonic: 'He is laughing (Hee-hee).', word: 'ひかり', romaji_word: 'hikari', meaning: 'LIGHT' },
+            'ふ': { mnemonic: 'Mount Fuji.', word: 'ふね', romaji_word: 'fune', meaning: 'SHIP' },
+            'へ': { mnemonic: 'A mountain (to Heaven).', word: 'へや', romaji_word: 'heya', meaning: 'ROOM' },
+            'ほ': { mnemonic: 'Hot! A chimney on a house.', word: 'ほし', romaji_word: 'hoshi', meaning: 'STAR' },
+            'ま': { mnemonic: 'Mama\'s face (or a mask).', word: 'まど', romaji_word: 'mado', meaning: 'WINDOW' },
+            'み': { mnemonic: 'Who is she? (Me!).', word: 'みず', romaji_word: 'mizu', meaning: 'WATER' },
+            'む': { mnemonic: 'Moo! A cow with a loop.', word: 'むし', romaji_word: 'mushi', meaning: 'INSECT' },
+            'め': { mnemonic: 'An eye (Me).', word: 'め', romaji_word: 'me', meaning: 'EYE' },
+            'も': { mnemonic: 'A hook for Mo-more fish.', word: 'もも', romaji_word: 'momo', meaning: 'PEACH' },
+            'や': { mnemonic: 'A Yak in the grass.', word: 'やま', romaji_word: 'yama', meaning: 'MOUNTAIN' },
+            'ゆ': { mnemonic: 'A Unique fish.', word: 'ゆき', romaji_word: 'yuki', meaning: 'SNOW' },
+            'よ': { mnemonic: 'A Yo-yo on a string.', word: 'よる', romaji_word: 'yoru', meaning: 'NIGHT' },
+            'ら': { mnemonic: 'A Rabbit\'s ear.', word: 'らいねん', romaji_word: 'rainen', meaning: 'NEXT YEAR' },
+            'り': { mnemonic: 'Ribbons in the wind.', word: 'りんご', romaji_word: 'ringo', meaning: 'APPLE' },
+            'る': { mnemonic: 'A road with a Loop.', word: 'るす', romaji_word: 'rusu', meaning: 'ABSENCE' },
+            'れ': { mnemonic: 'An old man Resting.', word: 'れい', romaji_word: 'rei', meaning: 'ZERO' },
+            'ろ': { mnemonic: 'A Road with no loop.', word: 'ろく', romaji_word: 'roku', meaning: 'SIX' },
+            'わ': { mnemonic: 'A Wasp flying.', word: 'わたしたち', romaji_word: 'watashitachi', meaning: 'WE' },
+            'を': { mnemonic: 'Whoa! Someone on a unicycle.', word: 'を', romaji_word: 'wo', meaning: '(PARTICLE)' },
+            'ん': { mnemonic: 'The eNd of the alphabet.', word: 'ん', romaji_word: 'n', meaning: 'N' }
+        };
 
-            // Auth Input States: Temporary storage for what the user types in the login forms.
+        const App = () => {
+            const [view, setView] = useState('auth');
+            const [quizMode, setQuizMode] = useState('visual');
+            const [writingIdx, setWritingIdx] = useState(0);
+            const [user, setUser] = useState(null);
+            const [isSignup, setIsSignup] = useState(false);
+            const [selectedHint, setSelectedHint] = useState(null);
+            const [isFlipped, setIsFlipped] = useState(false);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [showSettings, setShowSettings] = useState(false);
+            const [volume, setVolume] = useState(parseFloat(localStorage.getItem('app_volume') || '1.0'));
+            const [preferFemale, setPreferFemale] = useState(localStorage.getItem('prefer_female') !== 'false');
             const [username, setUsername] = useState('');
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [error, setError] = useState('');
+            const [quizList, setQuizList] = useState([]);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [score, setScore] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(30);
+            const [streak, setStreak] = useState(0);
+            const [maxStreak, setMaxStreak] = useState(0);
+            const [userInput, setUserInput] = useState('');
+            const [feedback, setFeedback] = useState(null);
+            const [options, setOptions] = useState([]);
+            
+            const timerRef = useRef(null);
+            const writerRef = useRef(null);
 
-            // --- STEP 3: PERSISTENCE (ALWAYS REMEMBER) ---
-            // This hook runs once when the app starts. It checks the browser's "filing cabinet" 
-            // (localStorage) to see if someone is already logged in.
             useEffect(() => {
-                const savedUser = localStorage.getItem('current_user');
-                if (savedUser) {
-                    setUser(JSON.parse(savedUser));
-                    setView('dashboard');
+                const stored = localStorage.getItem('current_user');
+                if (stored) {
+                    try { setUser(JSON.parse(stored)); setView('dashboard'); } catch(e) {}
                 }
             }, []);
 
-            // Quiz Performance States: Tracking the current session's progress.
-            const [quizList, setQuizList] = useState([]); // The 10 characters for the current round.
-            const [currentIndex, setCurrentIndex] = useState(0); // Which question are we on?
-            const [options, setOptions] = useState([]); // Multiple choice options for Audio mode.
-            const [userInput, setUserInput] = useState(''); // What the user typed in the quiz box.
-            const [feedback, setFeedback] = useState(null); // Stores 'correct' or 'incorrect' to show colors.
-            const [score, setScore] = useState(0); // Total correct answers.
-            const [timeLeft, setTimeLeft] = useState(30); // The countdown timer.
-            const [streak, setStreak] = useState(0); // Consecutive correct answers for the 🔥 effect.
-            const [maxStreak, setMaxStreak] = useState(0); // Highest streak achieved this session.
-            const timerRef = useRef(null);
+            useEffect(() => {
+                localStorage.setItem('app_volume', volume);
+                localStorage.setItem('prefer_female', preferFemale);
+            }, [volume, preferFemale]);
 
-            // --- STEP 4: SPEECH ENGINE ---
-            // Uses the browser's native speech synthesis. We 'cancel' previous speech to prevent overlapping.
-            const playAudio = (text) => {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ja-JP'; // Specifically set to Japanese.
-                utterance.rate = 0.8; // Slightly slower for better learning.
-                window.speechSynthesis.speak(utterance);
-            };
-
-            // --- STEP 5: SMART OPTION GENERATION ---
-            // In Audio mode, we need 1 correct answer and 3 random "distractors".
-            // This makes the quiz challenging but fair.
-            const generateOptions = (correctChar) => {
-                const distractors = HIRAGANA_DATA
-                    .filter(item => item.h !== correctChar)
-                    .sort(() => 0.5 - Math.random())
-                    .slice(0, 3)
-                    .map(item => item.h);
-                return [correctChar, ...distractors].sort(() => 0.5 - Math.random());
-            };
-
-            // --- STEP 6: AUTHENTICATION (THE GATEKEEPER) ---
-            // Handles both Signup and Login. Validates ID length, email format, and password security.
-            const handleAuth = (e) => {
-                e.preventDefault();
-                setError('');
-
-                // Human-friendly validation messages.
-                if (!/^\d{4}$/.test(username)) {
-                    setError('Username must be a 4-digit number.');
-                    return;
-                }
-                if (isSignup && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                    setError('Please enter a valid email address.');
-                    return;
-                }
-                if (password.length < 6) {
-                    setError('Password must be at least 6 characters.');
-                    return;
-                }
-
-                if (isSignup) {
-                    // Check if ID is taken, then save to localStorage.
-                    if (localStorage.getItem(`u_${username}`)) {
-                        setError('This ID is already registered.');
-                        return;
-                    }
-                    const newUser = { username, email, password };
-                    localStorage.setItem(`u_${username}`, JSON.stringify(newUser));
-                    localStorage.setItem('current_user', JSON.stringify(newUser));
-                    setUser(newUser);
-                    setView('dashboard');
-                } else {
-                    // Verify existing credentials from localStorage.
-                    const stored = JSON.parse(localStorage.getItem(`u_${username}`));
-                    if (stored && stored.password === password) {
-                        localStorage.setItem('current_user', JSON.stringify(stored));
-                        setUser(stored);
-                        setView('dashboard');
-                    } else {
-                        setError('Invalid ID or password.');
-                    }
-                }
-            };
-
-            const handleLogout = () => {
-                localStorage.removeItem('current_user');
-                setUser(null);
-                setView('auth');
-            };
-
-            // --- STEP 7: CULTURAL GREETINGS ---
-            // Checks the time of day to greet the user in Japanese.
-            const getGreeting = () => {
-                const hour = new Date().getHours();
-                if (hour < 12) return "Ohayou (おはよう)";
-                if (hour < 18) return "Konnichiwa (こんにちは)";
-                return "Konbanwa (こんばんは)";
-            };
-
-            // --- STEP 8: MNEMONIC HINTS (LEARNING TRICKS) ---
-            // Visual association tricks to help users memorize characters.
-            const MNEMONICS = {
-                'あ': 'Looks like an Apple.',
-                'い': 'Two eels swimming.',
-                'う': 'Looks like a U-turn or an ear.',
-                'え': 'An exotic bird or an exercise.',
-                'お': 'A golfer at the tee (on the green).',
-                'か': 'A camera on a tripod.',
-                'き': 'A key with two bars.',
-                'く': 'A cuckoo bird\'s beak.',
-                'け': 'A keg of beer.',
-                'こ': 'Two coins on a table.',
-                'し': 'A fish hook (She likes fishing).',
-                'す': 'A swing with a loop.',
-                'せ': 'A sunset at the beach.',
-                'そ': 'A sewing stitch.',
-                'た': 'Looks like the letters TA.',
-                'ち': 'A cheerleader doing a jump.',
-                'つ': 'A tsunami wave.',
-                'て': 'A dog\'s tail.',
-                'と': 'A toe with a splinter.',
-                'な': 'A nun praying.',
-                'に': 'Two needles.',
-                'ぬ': 'Noodles with a loop.',
-                'ね': 'A cat (neko) with a tail.',
-                'の': 'A "No" sign.',
-                'は': 'A ha-ha-house.',
-                'ひ': 'A person saying "He-he!".',
-                'ふ': 'Mount Fuji.',
-                'へ': 'A mountain path (heavens).',
-                'ほ': 'A hot house with a chimney.',
-                'ま': 'A mama calling her child.',
-                'み': 'Who is 21? (Me!).',
-                'む': 'A cow (moo) with a tail.',
-                'め': 'An eye (me) with eyelashes.',
-                'も': 'A hook for mo-more fish.',
-                'や': 'A yak in the grass.',
-                'ゆ': 'A unique fish.',
-                'よ': 'A yo-yo on a string.',
-                'ら': 'A rabbit\'s ear.',
-                'り': 'Ribbons in the wind.',
-                'る': 'A road with a loop.',
-                'れ': 'An old man resting.',
-                'ろ': 'A road with no loop.',
-                'わ': 'A wasp flying.',
-                'を': 'Whoa! Someone on a unicycle.',
-                'ん': 'The end of the alphabet.'
-            };
-
-
-            // --- STEP 9: THE QUIZ ENGINE (CREATING THE CHALLENGE) ---
-            const startQuiz = (mode) => {
-                let shuffled;
-                if (mode === 'targeted') {
-                    /**
-                     * SMART FEATURE: Targeted Training
-                     * We look at which characters you've failed most in the past 
-                     * and prioritize them for this round.
-                     */
-                    const stats = JSON.parse(localStorage.getItem(`stats_${user?.username}`) || '{}');
-                    const sorted = Object.entries(stats)
-                        .filter(([_, s]) => s.fail > 0)
-                        .sort((a, b) => b[1].fail - a[1].fail)
-                        .map(([char, _]) => char);
-                    
-                    const weakCharacters = sorted.map(h => HIRAGANA_DATA.find(d => d.h === h)).filter(Boolean);
-                    const pool = [...weakCharacters, ...HIRAGANA_DATA.sort(() => 0.5 - Math.random())];
-                    shuffled = pool.slice(0, 10);
-                } else {
-                    // Pure random shuffle for standard modes.
-                    shuffled = [...HIRAGANA_DATA].sort(() => 0.5 - Math.random()).slice(0, 10);
-                }
-
-                // Resetting all game-related state for a fresh start.
-                setQuizList(shuffled);
-                setQuizMode(mode === 'targeted' ? 'visual' : mode);
-                setCurrentIndex(0);
-                setScore(0);
-                setStreak(0);
-                setFeedback(null);
-                setUserInput('');
-                setView('quiz');
-                setTimeLeft(30);
-                
-                if (mode === 'audio') {
-                    const opts = generateOptions(shuffled[0].h);
-                    setOptions(opts);
-                    setTimeout(() => playAudio(shuffled[0].h), 500);
-                }
-            };
-
-            // --- STEP 10: TIMER LOGIC ---
             useEffect(() => {
                 if (view === 'quiz' && !feedback && timeLeft > 0) {
                     timerRef.current = setInterval(() => setTimeLeft(t => t - 1), 1000);
-                } else if (timeLeft === 0 && !feedback) {
-                    handleAnswer(null); // Timeout results in an automatic "incorrect" answer.
+                } else if (timeLeft === 0 && !feedback && view === 'quiz') {
+                    handleAnswer(null);
                 }
                 return () => clearInterval(timerRef.current);
             }, [view, feedback, timeLeft]);
 
-            // --- STEP 11: CELEBRATION (CONFETTI) ---
-            // Triggers a confetti burst when the user finishes the quiz.
             useEffect(() => {
                 if (view === 'result') {
-                    confetti({
-                        particleCount: 150,
-                        spread: 70,
-                        origin: { y: 0.6 },
-                        colors: ['#1e3a8a', '#0ea5e9', '#f59e0b']
-                    });
+                    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#1e3a8a', '#0ea5e9', '#f59e0b'] });
                 }
             }, [view]);
 
-            // --- STEP 12: ANALYTICS (LEARNING FROM FAILURE) ---
-            // Records every answer into localStorage so the "Targeted" mode knows your weak spots.
-            const updatePerformance = (char, isCorrect) => {
-                const stats = JSON.parse(localStorage.getItem(`stats_${user?.username}`) || '{}');
-                if (!stats[char]) stats[char] = { correct: 0, fail: 0 };
-                if (isCorrect) stats[char].correct += 1;
-                else stats[char].fail += 1;
-                localStorage.setItem(`stats_${user?.username}`, JSON.stringify(stats));
+            useEffect(() => {
+                const container = document.getElementById('writer-canvas');
+                const charData = HIRAGANA_DATA[writingIdx];
+                if (view !== 'writing' || !container || !charData) return;
+                
+                container.innerHTML = '';
+                const writer = HanziWriter.create('writer-canvas', charData.h, {
+                    width: 300, height: 300, padding: 20,
+                    strokeColor: '#38bdf8', outlineColor: 'rgba(255,255,255,0.05)',
+                    drawingColor: '#f0f9ff', drawingWidth: 20, showOutline: true,
+                    showHintAfterMisses: 1, highlightCompleteColor: '#22c55e',
+                    charDataLoader: (char, onLoad, onError) => {
+                        fetch(`https://cdn.jsdelivr.net/gh/ailectra/kana-json@master/data/${char}.json`)
+                            .then(res => res.json()).then(onLoad).catch(onError);
+                    }
+                });
+                writerRef.current = writer;
+                writer.quiz({ onComplete: () => confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } }) });
+                return () => { if (container) container.innerHTML = ''; };
+            }, [view, writingIdx]);
+
+            const playAudio = (text) => {
+                if (!window.speechSynthesis) return;
+                window.speechSynthesis.cancel();
+                const ut = new SpeechSynthesisUtterance(text);
+                ut.lang = 'ja-JP';
+                
+                // Respect user volume but keep it clear
+                ut.volume = volume; 
+                ut.rate = 0.9;
+                ut.pitch = 1.0;
+                
+                const setVoice = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    let bestVoice = voices.find(v => v.name.includes('Google 日本語')) || 
+                                    voices.find(v => v.name.includes('Kyoko')) ||
+                                    voices.find(v => v.name.includes('Haruka')) ||
+                                    voices.find(v => v.lang.includes('ja'));
+
+                    if (bestVoice) ut.voice = bestVoice;
+                    window.speechSynthesis.speak(ut);
+                };
+
+                if (window.speechSynthesis.getVoices().length === 0) {
+                    window.speechSynthesis.onvoiceschanged = setVoice;
+                } else {
+                    setVoice();
+                }
+
+                ut.onstart = () => setIsPlaying(true);
+                ut.onend = () => setIsPlaying(false);
             };
 
-            // --- STEP 13: ANSWER HANDLING ---
-            const handleAnswer = (answer) => {
+            const handleAuth = (e) => {
+                e.preventDefault();
+                if (!/^\d{4}$/.test(username)) { setError('ID must be 4 digits.'); return; }
+                if (password.length < 6) { setError('Min 6 chars.'); return; }
+                if (isSignup) {
+                    if (localStorage.getItem(`u_${username}`)) { setError('ID taken.'); return; }
+                    const newUser = { username, email, password };
+                    localStorage.setItem(`u_${username}`, JSON.stringify(newUser));
+                    localStorage.setItem('current_user', JSON.stringify(newUser));
+                    setUser(newUser); setView('dashboard');
+                } else {
+                    const stored = JSON.parse(localStorage.getItem(`u_${username}`));
+                    if (stored && stored.password === password) {
+                        localStorage.setItem('current_user', JSON.stringify(stored));
+                        setUser(stored); setView('dashboard');
+                    } else { setError('Invalid credentials.'); }
+                }
+            };
+
+            const startQuiz = (mode) => {
+                let shuffled = [...HIRAGANA_DATA].sort(() => 0.5 - Math.random()).slice(0, 10);
+                setQuizList(shuffled);
+                setQuizMode(mode);
+                setCurrentIndex(0); setScore(0); setStreak(0); setFeedback(null); setUserInput(''); setView('quiz'); setTimeLeft(30);
+                if (mode === 'audio') {
+                    const opts = HIRAGANA_DATA.filter(it => it.h !== shuffled[0].h).sort(() => 0.5-Math.random()).slice(0,3).map(it => it.h);
+                    setOptions([shuffled[0].h, ...opts].sort(() => 0.5-Math.random()));
+                    setTimeout(() => playAudio(shuffled[0].h), 500);
+                }
+            };
+
+            const handleAnswer = (ans) => {
                 if (feedback) return;
+                const correctChar = quizList[currentIndex].h;
+                const correctRomaji = quizList[currentIndex].r;
+                const isCorrect = quizMode === 'visual' ? (ans && ans.toLowerCase().trim() === correctRomaji) : ans === correctChar;
                 
-                const correct = quizList[currentIndex].h;
-                const isCorrect = quizMode === 'visual' 
-                    ? (answer && answer.toLowerCase().trim() === quizList[currentIndex].r)
-                    : answer === correct;
-
-                updatePerformance(correct, isCorrect);
-
                 if (isCorrect) {
-                    setScore(s => s + 1);
-                    setStreak(s => {
-                        const newStreak = s + 1;
-                        if (newStreak > maxStreak) setMaxStreak(newStreak);
-                        return newStreak;
+                    setScore(s => s + 1); 
+                    setStreak(s => { 
+                        const ns = s + 1; 
+                        if (ns > maxStreak) {
+                            setMaxStreak(ns);
+                            // Save high streak to user profile
+                            if (user) {
+                                const profile = JSON.parse(localStorage.getItem(`u_${user.username}`));
+                                if (profile) {
+                                    profile.maxStreak = Math.max(profile.maxStreak || 0, ns);
+                                    localStorage.setItem(`u_${user.username}`, JSON.stringify(profile));
+                                }
+                            }
+                        } 
+                        return ns; 
                     });
                     setFeedback('correct');
-                } else {
-                    setStreak(0);
+                } else { 
+                    setStreak(0); 
                     setFeedback('incorrect');
+                    // Play correct audio for learning reinforcement
+                    setTimeout(() => playAudio(correctChar), 500);
                 }
             };
 
-            // --- STEP 14: NAVIGATION (MOVING FORWARD) ---
             const handleNext = () => {
-                window.speechSynthesis.cancel();
                 if (currentIndex < 9) {
-                    const nextIndex = currentIndex + 1;
-                    setCurrentIndex(nextIndex);
-                    setFeedback(null);
-                    setUserInput('');
-                    
-                    // SMART FEATURE: Dynamic Difficulty
-                    // The timer gets faster as your streak grows!
-                    const baseTime = 30;
-                    const deduction = Math.min(streak * 2, 20); 
-                    setTimeLeft(baseTime - deduction);
-
+                    const ni = currentIndex + 1;
+                    setCurrentIndex(ni); setFeedback(null); setUserInput(''); setTimeLeft(30);
                     if (quizMode === 'audio') {
-                        const opts = generateOptions(quizList[nextIndex].h);
-                        setOptions(opts);
-                        playAudio(quizList[nextIndex].h);
+                        const opts = HIRAGANA_DATA.filter(it => it.h !== quizList[ni].h).sort(() => 0.5-Math.random()).slice(0,3).map(it => it.h);
+                        setOptions([quizList[ni].h, ...opts].sort(() => 0.5-Math.random()));
+                        playAudio(quizList[ni].h);
+                    } else {
+                        setTimeout(() => document.getElementById('quiz-input')?.focus(), 100);
                     }
-                } else {
-                    setView('result');
-                }
+                } else { setView('result'); }
             };
 
-            // --- STEP 15: THE VIEWS (UI RENDERING) ---
-            // React returns different HTML based on the 'view' state.
-
-            if (view === 'auth') return (
-                <div className="min-h-screen flex items-center justify-center p-6">
-                    <div className="glass w-full max-w-md p-10 rounded-[2.5rem] text-center">
-                        <div className="mb-8">
-                            <div className="w-20 h-20 bg-[var(--primary)] rounded-3xl mx-auto flex items-center justify-center text-white text-4xl font-black shadow-lg mb-4 floating">あ</div>
-                            <h1 className="text-4xl font-extrabold text-[var(--title-blue)] tracking-tight">Hiragana-<span className="text-[var(--primary)]">Test</span></h1>
-                            <p className="text-gray-500 mt-2">{isSignup ? 'Create your account' : 'Welcome back'}</p>
-                        </div>
-                        <form onSubmit={handleAuth} className="space-y-4">
-                            <div className="space-y-1 text-left">
-                                <label className="text-xs font-bold text-gray-400 uppercase ml-4">User ID (4 Digits)</label>
-                                <input type="text" placeholder="0000" maxLength="4"
-                                    className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none text-center text-xl font-bold transition-all"
-                                    value={username} onChange={e => setUsername(e.target.value.replace(/\D/g, ''))} required />
-                            </div>
-
-                            {isSignup && (
-                                <div className="space-y-1 text-left">
-                                    <label className="text-xs font-bold text-gray-400 uppercase ml-4">Email Address</label>
-                                    <input type="email" placeholder="you@example.com"
-                                        className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none transition-all"
-                                        value={email} onChange={e => setEmail(e.target.value)} required />
+            const renderView = () => {
+                switch(view) {
+                    case 'auth': return (
+                        <div className="min-h-screen flex items-center justify-center p-6">
+                            <div className="glass w-full max-w-md p-10 rounded-[2.5rem] text-center">
+                                <div className="mb-8">
+                                    <div className="w-20 h-20 bg-[var(--primary)] rounded-3xl mx-auto flex items-center justify-center text-white text-4xl font-black shadow-lg mb-4 floating">あ</div>
+                                    <h1 className="text-4xl font-extrabold text-[var(--title-blue)] tracking-tight">Hiragana-<span className="text-[var(--primary)]">Test</span></h1>
+                                    <p className="text-gray-500 mt-2">{isSignup ? 'Create your account' : 'Welcome back'}</p>
                                 </div>
-                            )}
-
-                            <div className="space-y-1 text-left">
-                                <label className="text-xs font-bold text-gray-400 uppercase ml-4">Password</label>
-                                <input type="password" placeholder="••••••••"
-                                    className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none transition-all"
-                                    value={password} onChange={e => setPassword(e.target.value)} required />
-                            </div>
-
-                            {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-
-                            <button className="w-full btn-gradient text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-blue-100 transform active:scale-95 transition">
-                                {isSignup ? 'Create Account' : 'Sign In'}
-                            </button>
-                        </form>
-
-                        <button onClick={() => { setIsSignup(!isSignup); setError(''); }} className="mt-6 text-[var(--primary)] font-bold hover:underline">
-                            {isSignup ? 'Already have an account? Login' : 'Need an account? Sign up'}
-                        </button>
-                    </div>
-                </div>
-            );
-
-            if (view === 'dashboard') return (
-                <div className="min-h-screen flex flex-col items-center justify-center p-8">
-                    <div className="max-w-4xl w-full">
-                        <div className="flex justify-between items-center mb-12">
-                            <div className="text-left">
-                                <h2 className="text-4xl font-black text-[var(--title-blue)]">{getGreeting()}, <span className="text-[var(--primary)]">ID {user?.username}</span></h2>
-                                <p className="text-gray-500">Ready to master Hiragana today?</p>
-                            </div>
-                            <button onClick={handleLogout} className="glass px-6 py-3 rounded-2xl font-bold text-red-500 hover:bg-red-50 transition-colors">
-                                Logout
-                            </button>
-                        </div>
-
-                        <div className="grid lg:grid-cols-3 gap-8">
-                            <div onClick={() => startQuiz('visual')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 opacity-5 rounded-bl-full transform transition-transform group-hover:scale-150"></div>
-                                <div className="text-6xl mb-6">👁️</div>
-                                <h3 className="text-2xl font-bold text-gray-800 mb-2">Visual</h3>
-                                <p className="text-gray-500 mb-8 leading-relaxed text-sm">Identify characters and type romaji.</p>
-                                <div className="flex items-center text-indigo-600 font-bold">Start →</div>
-                            </div>
-
-                            <div onClick={() => startQuiz('audio')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group border-indigo-200 bg-white/80">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500 opacity-5 rounded-bl-full transform transition-transform group-hover:scale-150"></div>
-                                <div className="text-6xl mb-6">🎧</div>
-                                <h3 className="text-2xl font-bold text-gray-800 mb-2">Listening</h3>
-                                <p className="text-gray-500 mb-8 leading-relaxed text-sm">Listen and select the correct character.</p>
-                                <div className="flex items-center text-pink-600 font-bold">Start →</div>
-                            </div>
-
-                            <div onClick={() => startQuiz('targeted')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group border-amber-200 bg-amber-50/30">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500 opacity-5 rounded-bl-full transform transition-transform group-hover:scale-150"></div>
-                                <div className="text-6xl mb-6">🎯</div>
-                                <h3 className="text-2xl font-bold text-gray-800 mb-2">Targeted</h3>
-                                <p className="text-gray-500 mb-8 leading-relaxed text-sm">AI-powered focus on your weak spots.</p>
-                                <div className="flex items-center text-amber-600 font-bold">Fix Errors →</div>
+                                <form onSubmit={handleAuth} className="space-y-4">
+                                    <input type="text" placeholder="User ID (4 Digits)" className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none text-center text-xl font-bold transition-all" value={username} onChange={e => setUsername(e.target.value)} required />
+                                    <input type="password" placeholder="Password" className="w-full p-4 rounded-2xl border-0 ring-1 ring-gray-200 focus:ring-2 focus:ring-[var(--primary)] outline-none transition-all" value={password} onChange={e => setPassword(e.target.value)} required />
+                                    {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
+                                    <button className="w-full btn-gradient text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-blue-100 transform active:scale-95 transition">
+                                        {isSignup ? 'Create Account' : 'Sign In'}
+                                    </button>
+                                </form>
+                                <button onClick={() => { setIsSignup(!isSignup); setError(''); }} className="mt-6 text-[var(--primary)] font-bold hover:underline">
+                                    {isSignup ? 'Already have an account? Login' : 'Need an account? Sign up'}
+                                </button>
                             </div>
                         </div>
-                    </div>
-                </div>
-            );
-
-            if (view === 'quiz') return (
-                <div className="min-h-screen flex flex-col items-center justify-center p-6">
-                    <div className="w-full max-w-2xl">
-                        <div className="flex justify-between items-center mb-4 px-4">
-                            <button onClick={() => setView('dashboard')} className="text-gray-400 hover:text-gray-600 font-bold flex items-center">
-                                <span className="mr-2">←</span> Quit
-                            </button>
-                            <div className="flex gap-3">
-                                {streak > 2 && (
-                                    <div className="glass px-4 py-2 rounded-full font-black text-orange-500 animate-bounce flex items-center shadow-orange-100 shadow-lg">
-                                        🔥 {streak} STREAK
+                    );
+                    case 'dashboard': return (
+                        <div className="min-h-screen flex flex-col items-center justify-center p-8">
+                            <div className="max-w-4xl w-full">
+                                <div className="flex justify-between items-center mb-12">
+                                    <div className="text-left">
+                                        <h2 className="text-4xl font-black text-[var(--title-blue)]">Hello, <span className="text-[var(--primary)]">ID {user?.username}</span></h2>
+                                        <p className="text-gray-500">Ready to master Hiragana today?</p>
                                     </div>
-                                )}
-                                <div className="glass px-4 py-2 rounded-full font-bold text-gray-600">{currentIndex + 1} / 10</div>
-                                <div className={`glass px-4 py-2 rounded-full font-bold ${timeLeft < 10 ? 'text-red-500' : 'text-indigo-600'}`}>
-                                    {timeLeft}s
+                                    <div className="flex gap-4">
+                                        <button onClick={() => setShowSettings(true)} className="glass px-6 py-3 rounded-2xl font-bold text-gray-600 hover:bg-white transition-colors">Settings</button>
+                                        <button onClick={() => { localStorage.removeItem('current_user'); setView('auth'); }} className="glass px-6 py-3 rounded-2xl font-bold text-red-500 hover:bg-red-50 transition-colors">Logout</button>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div className="px-4 mb-8">
-                            <div className="progress-container">
-                                <div className="progress-fill" style={{ width: `${(currentIndex + 1) * 10}%` }}></div>
-                            </div>
-                        </div>
-
-                        <div className="glass rounded-[3.5rem] p-12 relative overflow-hidden">
-                            {/* Quiz Content */}
-                            {quizMode === 'visual' ? (
-                                <div className="text-center">
-                                    <div className="japanese-text text-[140px] leading-none mb-4 text-gray-800 drop-shadow-sm transition-transform hover:scale-110 cursor-default">
-                                        {quizList[currentIndex].h}
+                                <div className="grid lg:grid-cols-3 gap-8">
+                                    <div onClick={() => startQuiz('visual')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group">
+                                        <div className="text-6xl mb-6">👁️</div><h3 className="text-2xl font-bold text-gray-800 mb-2">Visual</h3><p className="text-gray-500 mb-8 leading-relaxed text-sm">Identify characters and type romaji.</p><div className="text-indigo-600 font-bold">Start →</div>
                                     </div>
-
-                                    {/* Mnemonic Hint */}
-                                    <div className="h-8 mb-8">
-                                        {(feedback === 'incorrect' || streak === 0) && (
-                                            <p className="text-indigo-400 italic text-sm animate-fade-in">
-                                                Tip: {MNEMONICS[quizList[currentIndex].h]}
-                                            </p>
-                                        )}
+                                    <div onClick={() => startQuiz('audio')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group">
+                                        <div className="text-6xl mb-6">🎧</div><h3 className="text-2xl font-bold text-gray-800 mb-2">Listening</h3><p className="text-gray-500 mb-8 leading-relaxed text-sm">Listen and select the correct character.</p><div className="text-pink-600 font-bold">Start →</div>
                                     </div>
-
-                                    <div className="max-w-xs mx-auto">
-                                        <input
-                                            type="text"
-                                            className={`w-full p-6 text-3xl text-center rounded-3xl outline-none transition-all ring-2 ring-gray-100 focus:ring-indigo-500 ${feedback === 'correct' ? 'ring-green-500 bg-green-50' : feedback === 'incorrect' ? 'ring-red-500 bg-red-50' : ''}`}
-                                            placeholder="type romaji..."
-                                            value={userInput}
-                                            onChange={e => setUserInput(e.target.value)}
-                                            disabled={!!feedback}
-                                            autoFocus
-                                            onKeyDown={e => e.key === 'Enter' && (feedback ? handleNext() : handleAnswer(userInput))}
-                                        />
-
-                                        <div className="flex gap-4 mt-8">
-                                            {!feedback ? (
-                                                <button onClick={() => handleAnswer(userInput)} className="flex-1 py-4 btn-gradient text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 hover:scale-105 transition transform active:scale-95">Check</button>
-                                            ) : (
-                                                <button onClick={handleNext} className="flex-1 py-4 bg-gray-800 text-white rounded-2xl font-bold shadow-lg hover:bg-black transition animate-pulse transform active:scale-95">Next →</button>
-                                            )}
+                                    <div onClick={() => { setWritingIdx(0); setView('writing'); }} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group border-sky-400 bg-sky-900/10">
+                                        <div className="text-6xl mb-6">✍️</div><h3 className="text-2xl font-bold text-gray-800 mb-2">Writing</h3><p className="text-gray-500 mb-8 leading-relaxed text-sm">Master stroke order with interactive drawing.</p><div className="text-sky-600 font-bold">Start Practice →</div>
+                                    </div>
+                                    <div onClick={() => setView('hints_grid')} className="glass p-10 rounded-[3rem] card-hover cursor-pointer relative overflow-hidden group border-sky-200 lg:col-span-3">
+                                        <div className="flex items-center gap-6">
+                                            <div className="text-6xl">💡</div>
+                                            <div className="text-left">
+                                                <h3 className="text-2xl font-bold text-gray-800 mb-1">Memory Hints</h3>
+                                                <p className="text-gray-500 text-sm">Visual mnemonics to help you remember.</p>
+                                            </div>
+                                            <div className="ml-auto text-sky-600 font-bold text-xl">Explore →</div>
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="text-center">
-                                    <button
-                                        onClick={() => playAudio(quizList[currentIndex].h)}
-                                        className="w-32 h-32 bg-white rounded-full shadow-lg border border-gray-100 mb-12 flex items-center justify-center text-5xl hover:scale-110 active:scale-95 transition-all mx-auto relative group"
-                                    >
-                                        <div className="absolute inset-0 bg-indigo-500 opacity-0 group-hover:opacity-10 rounded-full transition-opacity"></div>
-                                        🔊
-                                    </button>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        {options.map((opt, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => handleAnswer(opt)}
-                                                disabled={!!feedback}
-                                                className={`option-btn p-8 rounded-3xl text-5xl japanese-text glass font-bold ${feedback === 'correct' && opt === quizList[currentIndex].h ? 'correct' : feedback === 'incorrect' && opt === quizList[currentIndex].h ? 'correct' : feedback === 'incorrect' && opt !== quizList[currentIndex].h ? 'incorrect' : ''}`}
-                                            >
-                                                {opt}
-                                            </button>
+                            </div>
+                        </div>
+                    );
+                    case 'hints_grid': return (
+                        <div className="min-h-screen flex flex-col items-center p-8 bg-[#f8fafc]">
+                            <div className="max-w-4xl w-full">
+                                <div className="flex justify-between items-center mb-10">
+                                    <button onClick={() => setView('dashboard')} className="glass px-6 py-3 rounded-2xl font-bold text-gray-600 hover:bg-white transition-all">← Dashboard</button>
+                                    <h2 className="text-3xl font-black text-[var(--primary)]">Memory Hints</h2>
+                                    <div className="w-32"></div>
+                                </div>
+                                <div className="glass rounded-[3rem] p-10 bg-white/80">
+                                    <div className="grid grid-cols-5 md:grid-cols-10 gap-4">
+                                        {HIRAGANA_DATA.map((item, i) => (
+                                            <div key={i} onClick={() => { setSelectedHint(item); setIsFlipped(false); setView('hints_card'); }} className="hint-item consonant">{item.h}</div>
                                         ))}
                                     </div>
-
-                                    {feedback === 'incorrect' && quizMode === 'audio' && (
-                                        <div className="mt-4 text-pink-600 font-bold animate-bounce">
-                                            Correct: {quizList[currentIndex].h} ({quizList[currentIndex].r})
-                                        </div>
-                                    )}
-
-                                    {feedback && (
-                                        <div className="mt-10 max-w-xs mx-auto">
-                                            <button onClick={handleNext} className="w-full py-5 bg-gray-800 text-white rounded-2xl font-bold shadow-lg hover:bg-black transition animate-pulse transform active:scale-95">
-                                                Next Character →
-                                            </button>
-                                        </div>
-                                    )}
                                 </div>
-                            )}
-
-                            {/* Correct Answer Display on Fail */}
-                            {feedback === 'incorrect' && quizMode === 'visual' && (
-                                <div className="mt-8 text-center text-red-500 font-bold animate-bounce">
-                                    Correct: {quizList[currentIndex].r}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-
-            if (view === 'result') return (
-                <div className="min-h-screen flex items-center justify-center p-6 text-center">
-                    <div className="glass w-full max-w-md p-16 rounded-[4rem] relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)]"></div>
-                        <div className="text-7xl mb-6 floating">🏆</div>
-                        <h2 className="text-4xl font-black text-[var(--title-blue)] mb-2">Training Done!</h2>
-                        <p className="text-gray-500 mb-2 italic">Otsukaresama desu!</p>
-
-                        <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-indigo-600 to-purple-600 mb-4">
-                            {score}<span className="text-3xl text-gray-300">/10</span>
-                        </div>
-
-                        {maxStreak > 2 && (
-                            <div className="mb-10 text-orange-500 font-bold text-lg">
-                                Best Streak: 🔥 {maxStreak}
                             </div>
-                        )}
+                        </div>
+                    );
+                    case 'hints_card': 
+                        const hint = HINTS_DATA[selectedHint.h];
+                        return (
+                        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#f0f9ff]">
+                            <div className="w-full max-w-md">
+                                <button onClick={() => setView('hints_grid')} className="text-sky-600 font-bold mb-8 block">← Back to List</button>
+                                <div className={`card-container ${isFlipped ? 'flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
+                                    <div className="card-inner">
+                                        <div className="card-front">
+                                            <div className="text-[120px] text-[var(--primary)] mb-2">{selectedHint.h}</div>
+                                            <div className="text-4xl text-sky-400 italic mb-8">{selectedHint.r}</div>
+                                            <div className="bg-sky-50 p-6 rounded-3xl border border-sky-100 italic">"{hint.mnemonic}"</div>
+                                        </div>
+                                        <div className="card-back">
+                                            <div className="text-7xl mb-2">{hint.word}</div>
+                                            <div className="text-3xl mb-6">({hint.romaji_word})</div>
+                                            <div className="text-4xl font-black uppercase">{hint.meaning}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mt-8 flex gap-4">
+                                    <button onClick={() => playAudio(selectedHint.h)} className="flex-1 py-5 bg-white text-[var(--primary)] rounded-[2rem] font-bold border border-sky-100 hover:scale-105 transition">🔊 Play Audio</button>
+                                    <button onClick={() => {
+                                        const idx = HIRAGANA_DATA.findIndex(d => d.h === selectedHint.h);
+                                        setSelectedHint(HIRAGANA_DATA[(idx + 1) % HIRAGANA_DATA.length]);
+                                        setIsFlipped(false);
+                                    }} className="flex-1 py-5 bg-[var(--primary)] text-white rounded-[2rem] font-bold hover:scale-105 transition">Next →</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                    case 'writing':
+                        const wData = HIRAGANA_DATA[writingIdx];
+                        return (
+                        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#0f172a]">
+                            <div className="w-full max-w-md text-center">
+                                <div className="flex justify-between items-center mb-8">
+                                    <button onClick={() => setView('dashboard')} className="text-sky-400 font-bold">← Quit</button>
+                                    <div className="text-sky-200/50 font-bold text-sm">{writingIdx + 1} / {HIRAGANA_DATA.length}</div>
+                                    <div className="w-10"></div>
+                                </div>
+                                <div className="text-sky-400 text-7xl font-black mb-8">{wData.r}</div>
+                                <div className="bg-slate-800 p-8 rounded-[3rem] border border-slate-700 mb-8 shadow-2xl">
+                                    <div id="writer-canvas" className="mx-auto bg-white rounded-2xl" style={{ width: '300px', height: '300px' }}></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                    <button onClick={() => playAudio(wData.h)} className="py-4 bg-white/10 text-white rounded-2xl font-bold hover:bg-white/20 transition flex items-center justify-center gap-2"><span>🔊</span> Listen</button>
+                                    <button onClick={() => writerRef.current.animateCharacter()} className="py-4 bg-orange-500 text-white rounded-2xl font-bold hover:bg-orange-600 transition flex items-center justify-center gap-2"><span>💡</span> Hint</button>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <button onClick={() => setWritingIdx((writingIdx - 1 + HIRAGANA_DATA.length) % HIRAGANA_DATA.length)} className="py-4 bg-slate-700 text-white rounded-2xl font-bold hover:bg-slate-600 transition">Prev</button>
+                                    <button onClick={() => { writerRef.current.cancelQuiz(); writerRef.current.quiz(); }} className="py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition">Try Again</button>
+                                    <button onClick={() => setWritingIdx((writingIdx + 1) % HIRAGANA_DATA.length)} className="py-4 bg-sky-500 text-white rounded-2xl font-bold hover:bg-sky-600 transition">Next</button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                    case 'quiz': return (
+                        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#f8fafc]">
+                            <div className="w-full max-w-2xl">
+                                <div className="flex justify-between items-center mb-4 px-4">
+                                    <button onClick={() => setView('dashboard')} className="text-gray-400 hover:text-gray-600 font-bold">← Quit</button>
+                                    <div className="flex gap-3">
+                                        <div className="glass px-4 py-2 rounded-full font-bold text-gray-600">{currentIndex + 1} / 10</div>
+                                        <div className={`glass px-4 py-2 rounded-full font-bold ${timeLeft < 10 ? 'text-red-500' : 'text-indigo-600'}`}>{timeLeft}s</div>
+                                    </div>
+                                </div>
+                                <div className="px-4 mb-8">
+                                    <div className="progress-container"><div className="progress-fill" style={{ width: `${(currentIndex + 1) * 10}%` }}></div></div>
+                                </div>
+                                <div className="glass rounded-[3.5rem] p-12 text-center relative overflow-hidden">
+                                    {quizMode === 'visual' ? (
+                                        <div>
+                                            <div className="japanese-text text-[140px] leading-none mb-4 text-gray-800">{quizList[currentIndex].h}</div>
+                                            <p className="text-indigo-400 italic text-sm mb-8">Tip: {HINTS_DATA[quizList[currentIndex].h]?.mnemonic}</p>
+                                            <div className="max-w-xs mx-auto">
+                                                <input type="text" id="quiz-input" className={`w-full p-6 text-3xl text-center rounded-3xl outline-none ring-2 ring-gray-100 focus:ring-indigo-500 ${feedback === 'correct' ? 'ring-green-500 bg-green-50' : feedback === 'incorrect' ? 'ring-red-500 bg-red-50' : ''}`} placeholder="type romaji..." value={userInput} onChange={e => setUserInput(e.target.value)} disabled={!!feedback} autoFocus onKeyDown={e => e.key === 'Enter' && (feedback ? handleNext() : handleAnswer(userInput))} />
+                                                <div className="mt-8">
+                                                    {!feedback ? <button onClick={() => handleAnswer(userInput)} className="w-full py-4 btn-gradient text-white rounded-2xl font-bold shadow-lg">Check</button> : <button onClick={handleNext} className="w-full py-4 bg-gray-800 text-white rounded-2xl font-bold">Next →</button>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <button onClick={() => playAudio(quizList[currentIndex].h)} className={`w-32 h-32 rounded-full shadow-lg border mb-12 flex items-center justify-center text-5xl mx-auto ${isPlaying ? 'bg-indigo-50 animate-pulse' : 'bg-white'}`}>{isPlaying ? '〰️' : '🔊'}</button>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {options.map((opt, i) => (
+                                                    <button key={i} onClick={() => handleAnswer(opt)} disabled={!!feedback} className={`option-btn p-8 rounded-3xl text-5xl japanese-text glass font-bold ${feedback === 'correct' && opt === quizList[currentIndex].h ? 'correct' : feedback === 'incorrect' && opt === quizList[currentIndex].h ? 'correct' : feedback === 'incorrect' && opt !== quizList[currentIndex].h ? 'incorrect' : ''}`}>{opt}</button>
+                                                ))}
+                                            </div>
+                                            {feedback && <button onClick={handleNext} className="mt-10 w-full py-5 bg-gray-800 text-white rounded-2xl font-bold">Next Character →</button>}
+                                        </div>
+                                    )}
+                                    {feedback === 'incorrect' && <div className="mt-8 text-red-500 font-bold animate-bounce">Correct: {quizMode === 'visual' ? quizList[currentIndex].r : quizList[currentIndex].h}</div>}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                    case 'result': return (
+                        <div className="min-h-screen flex items-center justify-center p-6 text-center">
+                            <div className="glass w-full max-w-md p-16 rounded-[4rem]">
+                                <div className="text-7xl mb-6">🏆</div>
+                                <h2 className="text-4xl font-black text-[var(--title-blue)] mb-2">Training Done!</h2>
+                                <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-indigo-600 to-purple-600 mb-8">{score}/10</div>
+                                <button onClick={() => setView('dashboard')} className="w-full py-5 btn-gradient text-white rounded-2xl font-bold text-xl shadow-xl">Main Menu</button>
+                            </div>
+                        </div>
+                    );
+                }
+            };
 
-                        <button onClick={() => setView('dashboard')} className="w-full py-5 btn-gradient text-white rounded-2xl font-bold text-xl shadow-xl shadow-blue-100 hover:scale-[1.02] active:scale-95 transition">
-                            Main Menu
-                        </button>
-                    </div>
+            return (
+                <div className="relative">
+                    {renderView()}
+                    {showSettings && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+                            <div className="glass w-full max-w-md p-10 rounded-[3rem] bg-white relative">
+                                <button onClick={() => setShowSettings(false)} className="absolute top-6 right-6 text-gray-400 text-2xl font-bold">×</button>
+                                <h3 className="text-3xl font-black text-[var(--primary)] mb-8">Settings</h3>
+                                <div className="space-y-8">
+                                    <div>
+                                        <label className="font-bold block mb-4">Volume: {Math.round(volume * 100)}%</label>
+                                        <input type="range" min="0" max="1" step="0.1" value={volume} onChange={e => setVolume(parseFloat(e.target.value))} className="w-full accent-sky-500" />
+                                    </div>
+                                    <div className="flex justify-between items-center p-4 bg-sky-50 rounded-2xl">
+                                        <span className="font-bold">Female Voice</span>
+                                        <div onClick={() => setPreferFemale(!preferFemale)} className={`w-14 h-8 rounded-full p-1 cursor-pointer transition-colors ${preferFemale ? 'bg-sky-500' : 'bg-gray-300'}`}>
+                                            <div className={`bg-white w-6 h-6 rounded-full transition ${preferFemale ? 'translate-x-6' : ''}`}></div>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setShowSettings(false)} className="w-full py-4 btn-gradient text-white rounded-2xl font-bold shadow-lg transform active:scale-95 transition">Save & Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
